@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Expense Details</title>
+  <style>
+    :root{font-family:Arial,sans-serif;color:#182230;background:#f4f6f8}
+    *{box-sizing:border-box}body{margin:0}.wrap{max-width:620px;margin:auto;padding:20px}
+    .brand{font-size:13px;color:#64748b;font-weight:700;letter-spacing:.08em}
+    h1{font-size:26px;margin:8px 0}.sub{color:#64748b;margin:0 0 22px}
+    .card{background:white;border:1px solid #e5e7eb;border-radius:16px;padding:18px;margin:14px 0;box-shadow:0 4px 18px #14213d0a}
+    label{display:block;font-size:13px;font-weight:700;margin:13px 0 6px}
+    input,select,textarea{width:100%;padding:13px;border:1px solid #cbd5e1;border-radius:10px;font:inherit;background:white}
+    button{border:0;border-radius:10px;padding:14px 18px;font-weight:700;cursor:pointer}
+    .primary{background:#142d4e;color:white;width:100%;margin-top:16px}.secondary{background:#eaf0f6;color:#142d4e}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.hidden{display:none!important}
+    .note{font-size:12px;color:#64748b;line-height:1.5}.msg{margin-top:12px;font-size:14px}
+    .ok{color:#087443}.err{color:#b42318}.top{display:flex;justify-content:space-between;align-items:center}
+    @media(max-width:480px){.grid{grid-template-columns:1fr}.wrap{padding:14px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">EXPENSE MANAGEMENT</div>
+  <div id="login" class="card">
+    <h1>Sign in</h1><p class="sub">Use your assigned username and PIN.</p>
+    <label>Username</label><input id="username" autocomplete="username">
+    <label>PIN</label><input id="pin" type="password" autocomplete="current-password">
+    <button class="primary" onclick="signIn()">Continue</button><div id="loginMsg" class="msg err"></div>
+  </div>
+  <div id="app" class="hidden">
+    <div class="top"><div><h1>New expense</h1><div id="hello" class="sub"></div></div><button class="secondary" onclick="signOut()">Logout</button></div>
+    <div class="card">
+      <label>Payment details shared from UPI app</label>
+      <textarea id="sharedText" rows="4" placeholder="Paste shared payment text here, or use the screenshot upload below."></textarea>
+      <label>Payment screenshot / receipt</label><input id="receipt" type="file" accept="image/*,application/pdf">
+      <p class="note">Text and screenshots may help prefill details. Always check every field before saving. A share-menu handoff depends on phone and UPI-app support.</p>
+      <button class="secondary" onclick="prefill()">Try to read shared text</button>
+    </div>
+    <div class="card">
+      <div id="ledgerWrap"><label>Ledger</label><select id="ledger"><option value="OFFICE">Office</option><option value="PERSONAL">Personal</option></select></div>
+      <div class="grid">
+        <div><label>Date</label><input id="date" type="date"></div>
+        <div><label>Amount (₹)</label><input id="amount" type="number" min=".01" step=".01"></div>
+      </div>
+      <label>Category</label><select id="category"><option>Food & Refreshments</option><option>Travel & Transport</option><option>Fuel</option><option>Office Supplies</option><option>Rent & Utilities</option><option>Salary & Staff</option><option>Repairs & Maintenance</option><option>Marketing</option><option>Personal Shopping</option><option>Medical</option><option>Education</option><option>Household</option><option>Other</option></select>
+      <label>Expense Owner</label><input id="owner">
+      <label>Paid By</label><input id="paidBy">
+      <label>UPI Transaction ID</label><input id="upi">
+      <label>Merchant / Description</label><textarea id="description" rows="2"></textarea>
+      <button class="primary" id="save" onclick="saveExpense()">Review & save expense</button>
+      <div id="saveMsg" class="msg"></div>
+    </div>
+    <div class="card"><h3>My recent submissions</h3><p class="note">Only records permitted by your account are returned by the server.</p><button class="secondary" onclick="loadMine()">Refresh history</button><div id="history"></div></div>
+  </div>
+</div>
+<script>
+let TOKEN='',USER=null;
+const $=id=>document.getElementById(id);
+function call(name,args){return new Promise((ok,no)=>{google.script.run.withSuccessHandler(ok).withFailureHandler(e=>no(Error(e.message||e)))[name](...args)})}
+function msg(id,s,bad=false){$(id).textContent=s;$(id).className='msg '+(bad?'err':'ok')}
+function today(){return new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)}
+async function signIn(){try{const r=await call('login',[$('username').value.trim(),$('pin').value]);TOKEN=r.token;USER=r.user;sessionStorage.setItem('expenseDetailsToken',TOKEN);openApp()}catch(e){msg('loginMsg',e.message,true)}}
+function openApp(){ $('login').classList.add('hidden');$('app').classList.remove('hidden');$('hello').textContent=USER.name+' · '+USER.role;$('owner').value=USER.name;$('paidBy').value=USER.name;$('date').value=today();const ledgers=USER.role==='ADMIN'?['OFFICE','PERSONAL']:String(USER.ledgers||'').split(',');if(ledgers.length===1){$('ledger').value=ledgers[0];$('ledgerWrap').classList.add('hidden')}else{$('ledgerWrap').classList.remove('hidden')}loadMine()}
+async function signOut(){try{await call('logout',[TOKEN])}catch(e){}TOKEN='';USER=null;sessionStorage.removeItem('expenseDetailsToken');$('app').classList.add('hidden');$('login').classList.remove('hidden')}
+function prefill(){const t=$('sharedText').value;const a=t.match(/(?:₹|INR|Rs\.?\s*)\s*([\d,]+(?:\.\d{1,2})?)/i);if(a)$('amount').value=a[1].replace(/,/g,'');const u=t.match(/(?:UPI\s*(?:Txn|Transaction)?\s*ID|UTR|Transaction\s*ID|Ref(?:erence)?\s*No)\s*[:#-]?\s*([A-Za-z0-9-]{8,})/i);if(u)$('upi').value=u[1];$('description').value=$('description').value||t.slice(0,180);msg('saveMsg','Please verify the extracted details; text extraction is not guaranteed.')}
+function fileData(f){return new Promise((ok,no)=>{if(!f)return ok(null);if(f.size>5*1024*1024)return no(Error('File must be 5 MB or smaller.'));const r=new FileReader();r.onload=()=>ok({name:f.name,mimeType:f.type,base64:String(r.result).split(',')[1]});r.onerror=()=>no(Error('Could not read file.'));r.readAsDataURL(f)})}
+async function saveExpense(){if(!confirm('Have you checked the amount, date, ledger, owner and payment details? Save this expense?'))return;const b=$('save');b.disabled=true;try{const receipt=await fileData($('receipt').files[0]);const data={expenseType:$('ledger').value,date:$('date').value,amount:$('amount').value,category:$('category').value,expenseOwner:$('owner').value.trim(),paidBy:$('paidBy').value.trim(),upiTransactionId:$('upi').value.trim(),description:$('description').value.trim(),paymentMode:'UPI',receipt};const r=await call('submitExpense',[TOKEN,data]);msg('saveMsg',r.message+' · '+r.expenseId);$('amount').value='';$('upi').value='';$('description').value='';$('sharedText').value='';$('receipt').value='';await loadMine()}catch(e){msg('saveMsg',e.message,true)}finally{b.disabled=false}}
+async function loadMine(){try{const rows=await call('getExpenses',[TOKEN,{expenseType:'ALL'}]);$('history').innerHTML=rows.slice(0,10).map(x=>'<p><b>'+esc(x.date)+' · ₹'+Number(x.amount).toLocaleString('en-IN')+'</b><br>'+esc(x.category)+' · '+esc(x.expenseId)+'</p>').join('')||'<p class="note">No submissions found.</p>'}catch(e){$('history').textContent=e.message}}
+function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+(async()=>{const t=sessionStorage.getItem('expenseDetailsToken');if(t){try{USER=await call('getCurrentUser',[t]);TOKEN=t;openApp()}catch(e){sessionStorage.removeItem('expenseDetailsToken')}}})();
+</script>
+</body></html>
